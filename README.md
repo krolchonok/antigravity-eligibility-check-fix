@@ -1,11 +1,14 @@
 # agy-tier-fix
 
-Небольшой mitmproxy-аддон, который чинит **выбор тарифа** в Antigravity CLI
-(`agy`): клиент онбордится на купленный **standard-tier** вместо **free-tier**.
+**English** · [Русский](README.ru.md)
 
-## Проблема
+A small mitmproxy addon that fixes **tier selection** in the Antigravity CLI
+(`agy`): the client onboards onto the purchased **standard-tier** instead of
+**free-tier**.
 
-Запрос `v1internal:loadCodeAssist` возвращает по аккаунту примерно такое:
+## Problem
+
+`v1internal:loadCodeAssist` returns something like this for the account:
 
 ```json
 {
@@ -15,83 +18,105 @@
 }
 ```
 
-То есть сервер сам помечает **standard-tier как разрешённый и дефолтный**, а
-free-tier — как недоступный. Но клиент, увидев free-tier в `ineligibleTiers`,
-обрывается с ошибкой вида `Eligibility check failed: ... not available in your
-location` и не доходит до онбординга на standard-tier.
+The server itself marks **standard-tier as allowed and default**, and free-tier
+as ineligible. But the client, seeing free-tier in `ineligibleTiers`, bails out
+with an error like `Eligibility check failed: ... not available in your
+location` and never onboards onto standard-tier.
 
-Это ошибка выбора тарифа на стороне клиента: тариф, который сервер выдаёт, не
-используется. Аддон её и правит.
+This is a client-side tier-selection bug: the tier the server grants is not
+used. The addon fixes exactly that.
 
-> Утилита для тех, у кого **standard-tier реально есть** в `allowedTiers`. Сервер
-> остаётся источником истины: онбординг и генерацию он проверяет сам.
+> For users who **actually have standard-tier** in `allowedTiers`. The server
+> stays the source of truth — it validates onboarding and generation itself.
 
-## Что делает аддон
+## What the addon does
 
 `tier-fix.py`:
 
-1. **`loadCodeAssist` (ответ)** — удаляет блок `ineligibleTiers`, чтобы клиент
-   не обрывался и брал `standard-tier` из `allowedTiers`.
-2. **`onboardUser` (запрос)** — на всякий случай ставит `tierId=standard-tier`,
-   если клиент прислал другой.
+1. **`loadCodeAssist` (response)** — removes the `ineligibleTiers` block so the
+   client doesn't bail and picks `standard-tier` from `allowedTiers`.
+2. **`onboardUser` (request)** — sets `tierId=standard-tier` if the client sent
+   a different one (belt and suspenders).
 
-## Требования
+## Requirements
 
 - [mitmproxy](https://mitmproxy.org/) (`mitmdump`) 11+
-- `agy` в `PATH` (или укажи `AGY_BIN=/путь/к/agy`)
+- `agy` in `PATH` (or set `AGY_BIN=/path/to/agy`)
 - `bash`, `ss` (iproute2)
 
-## Использование
+## Usage
 
 ```bash
 git clone <this-repo> agy-tier-fix
 cd agy-tier-fix
 chmod +x agy-tier.sh
 
-./agy-tier.sh                 # интерактивно
-./agy-tier.sh -p "say ok"     # разовый промпт
+./agy-tier.sh                 # interactive
+./agy-tier.sh -p "say ok"     # one-off prompt
 ```
 
-Скрипт сам:
+The script automatically:
 
-- при первом запуске генерирует mitmproxy CA (`~/.mitmproxy`);
-- собирает CA-бандл `системные корни + mitmproxy CA` и отдаёт его `agy` через
-  `SSL_CERT_FILE` — чтобы Go-клиент доверял mitm (системное хранилище **не**
-  меняется);
-- поднимает `mitmdump` с аддоном на `127.0.0.1:8085` (фоново, переиспользуется);
-- запускает `agy` через этот прокси.
+- generates the mitmproxy CA on first run (`~/.mitmproxy`);
+- builds a CA bundle `system roots + mitmproxy CA` and hands it to `agy` via
+  `SSL_CERT_FILE` so the Go client trusts mitm (the system trust store is **not**
+  modified);
+- starts `mitmdump` with the addon on `127.0.0.1:8085` (background, reused);
+- runs `agy` through that proxy.
 
-Удобный алиас:
+TLS is intercepted **only** for the API host (`--allow-hosts`), so anything else
+`agy` (or a child process like `gh`/`git`) talks to passes through untouched with
+real certificates.
+
+Handy alias:
 
 ```bash
 alias agys='/path/to/agy-tier-fix/agy-tier.sh'
 ```
 
-### Переменные
+### Environment variables
 
-| Переменная | По умолчанию | Назначение |
-|-----------|--------------|-----------|
-| `AGY_BIN` | `agy` из PATH / `~/.local/bin/agy` | путь к бинарю agy |
-| `AGY_MITM_PORT` | `8085` | порт локального mitmproxy |
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `AGY_BIN` | `agy` from PATH / `~/.local/bin/agy` | path to the agy binary |
+| `AGY_MITM_PORT` | `8085` | local mitmproxy port |
 
-## Egress / регион
+## Egress / region
 
-Аддон правит только выбор тарифа и **не трогает egress** — соединение к API идёт
-обычным системным резолвом и маршрутом. Если генерация упирается в
-`400 "User location is not supported for the API use."`, значит запрос к модели
-уходит из региона, где API недоступен. Это уже не про тариф и не про эту утилиту:
-она локацию не подделывает. Соединение должно реально исходить из поддерживаемого
-региона твоим законным способом (VPN/сеть) — тогда вызов проходит.
+The addon only fixes tier selection and **does not touch egress** — the API
+connection uses your normal system DNS and route. If generation fails with
+`400 "User location is not supported for the API use."`, the model request is
+leaving from a region where the API is unavailable. That is not about tiers and
+not about this tool: it does not spoof location. The connection must genuinely
+originate from a supported region by your own lawful means (VPN/network) for that
+call to pass.
 
-## Остановить
+## Stop
 
 ```bash
 kill "$(cat mitm-tier.pid)"
 ```
 
-## Примечания
+## Notes
 
-- `agy` — Go-бинарь и нативно уважает `HTTP(S)_PROXY` / `SSL_CERT_FILE`; поэтому
-  всё настраивается переменными окружения, без правки системы.
-- proxychains для agy не работает: он хукает libc `connect()`, а Go зовёт
-  `connect()` напрямую.
+- `agy` is a Go binary and natively honors `HTTP(S)_PROXY` / `SSL_CERT_FILE`, so
+  everything is configured through environment variables, without modifying the
+  system.
+- proxychains does not work for agy: it hooks libc `connect()`, while the Go
+  runtime calls `connect()` directly.
+
+## Windows
+
+`agy` on Windows uses the system certificate store and ignores `SSL_CERT_FILE`,
+so trust the mitmproxy CA once, then run manually:
+
+```powershell
+mitmdump                                   # run once, Ctrl+C — generates %USERPROFILE%\.mitmproxy\
+certutil -addstore -user Root "$env:USERPROFILE\.mitmproxy\mitmproxy-ca-cert.cer"
+
+# window 1
+mitmdump -s tier-fix.py --listen-host 127.0.0.1 --listen-port 8085 --allow-hosts 'daily-cloudcode-pa\.googleapis\.com'
+# window 2
+$env:HTTP_PROXY="http://127.0.0.1:8085"; $env:HTTPS_PROXY="http://127.0.0.1:8085"
+agy -p "say ok"
+```
