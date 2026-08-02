@@ -6,3 +6,10 @@ calls.log
 ca-bundle-mitm.pem
 __pycache__/
 *.pyc
+
+# debug captures — CONTAIN LIVE OAuth TOKENS / Authorization headers, never commit
+capture-api/
+capture-oauth/
+capture-*.py
+capture-*.log
+capture-*.pid
