@@ -43,15 +43,36 @@ location` и не доходит до онбординга на standard-tier.
 - `agy` в `PATH` (или укажи `AGY_BIN=/путь/к/agy`)
 - `bash`, `ss` (iproute2)
 
-## Использование
+## Установка
+
+Универсальный запуск (Windows / Linux / macOS):
 
 ```bash
-git clone <this-repo> agy-tier-fix
-cd agy-tier-fix
-chmod +x agy-tier.sh
+python install.py
+```
 
-./agy-tier.sh                 # интерактивно
-./agy-tier.sh -p "say ok"     # разовый промпт
+Или для конкретной ОС:
+
+* **Linux / macOS**: `./install.sh`
+* **Windows (PowerShell)**: `powershell -ExecutionPolicy Bypass -File install.ps1`
+
+Скрипт автоматически:
+
+- Создает изолированную папку установки (`~/.local/share/agy-tier-fix` на Linux или `%LOCALAPPDATA%\agy-tier-fix` на Windows);
+- Генерирует и регистрирует CA-сертификат `mitmproxy`;
+- Прописывает алиас `agys` в ваш командный толмач (`~/.bashrc`, `~/.zshrc` или профили PowerShell);
+- Запускает `mitmdump` фоново во время работы `agy` и автоматически выключает его при выходе.
+
+### Использование
+
+```bash
+agys -p "say ok"
+```
+
+### Удаление
+
+```bash
+python uninstall.py
 ```
 
 Скрипт сам:

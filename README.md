@@ -44,15 +44,36 @@ used. The addon fixes exactly that.
 - `agy` in `PATH` (or set `AGY_BIN=/path/to/agy`)
 - `bash`, `ss` (iproute2)
 
-## Usage
+## Installation
+
+Universal single-command setup (Windows / Linux / macOS):
 
 ```bash
-git clone <this-repo> agy-tier-fix
-cd agy-tier-fix
-chmod +x agy-tier.sh
+python install.py
+```
 
-./agy-tier.sh                 # interactive
-./agy-tier.sh -p "say ok"     # one-off prompt
+Or platform-specific:
+
+* **Linux / macOS**: `./install.sh`
+* **Windows (PowerShell)**: `powershell -ExecutionPolicy Bypass -File install.ps1`
+
+The script automatically:
+
+- Creates a standalone installation directory (`~/.local/share/agy-tier-fix` on Linux or `%LOCALAPPDATA%\agy-tier-fix` on Windows);
+- Generates and registers the `mitmproxy` CA certificate;
+- Adds the `agys` alias/function to your shell profile (`.bashrc`, `.zshrc`, or PowerShell profiles);
+- Spawns `mitmdump` on demand when running `agy` and auto-terminates it on exit.
+
+### Usage
+
+```bash
+agys -p "say ok"
+```
+
+### Uninstallation
+
+```bash
+python uninstall.py
 ```
 
 The script automatically:
