@@ -14,24 +14,54 @@ cp "$SOURCE_DIR/tier-fix.py" "$INSTALL_DIR/"
 cp "$SOURCE_DIR/agy-tier.sh" "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/agy-tier.sh"
 
-if [ -f "$SOURCE_DIR/uninstall.sh" ]; then
-  cp "$SOURCE_DIR/uninstall.sh" "$INSTALL_DIR/"
-  chmod +x "$INSTALL_DIR/uninstall.sh"
-fi
+for f in uninstall.sh uninstall.py; do
+  if [ -f "$SOURCE_DIR/$f" ]; then
+    cp "$SOURCE_DIR/$f" "$INSTALL_DIR/"
+    chmod +x "$INSTALL_DIR/$f"
+  fi
+done
 
 # Проверка mitmproxy
 if ! command -v mitmdump &>/dev/null; then
-  echo "mitmdump не найден. Устанавливаем mitmproxy через pip..."
-  pip install mitmproxy || pip3 install mitmproxy
+  echo "mitmdump не найден. Устанавливаем mitmproxy..."
+  # pip напрямую падает на externally-managed окружениях (PEP 668):
+  # Debian 12+/Ubuntu 24.04+. Пробуем pipx, затем pip --user, затем override.
+  if command -v pipx &>/dev/null; then
+    pipx install mitmproxy
+  elif ! (pip install --user mitmproxy || pip3 install --user mitmproxy); then
+    pip install --user --break-system-packages mitmproxy \
+      || pip3 install --user --break-system-packages mitmproxy
+  fi
+fi
+
+if ! command -v mitmdump &>/dev/null; then
+  echo "Ошибка: mitmdump так и не найден в PATH." >&2
+  echo "Установите mitmproxy вручную (pipx install mitmproxy) и запустите install.sh снова." >&2
+  exit 1
+fi
+
+# agy-tier.sh использует ss (iproute2) для проверки порта
+if ! command -v ss &>/dev/null; then
+  echo "Внимание: 'ss' не найден (пакет iproute2) — agy-tier.sh не сможет проверить порт." >&2
+fi
+
+if ! command -v agy &>/dev/null && [ ! -x "$HOME/.local/bin/agy" ]; then
+  echo "Внимание: 'agy' не найден в PATH. Задайте AGY_BIN=/путь/к/agy при запуске." >&2
 fi
 
 # Генерация CA сертификата mitmproxy
 CONF="$HOME/.mitmproxy"
 if [ ! -f "$CONF/mitmproxy-ca-cert.pem" ]; then
   echo "Генерация CA-сертификата mitmproxy..."
-  timeout 8 mitmdump --set confdir="$CONF" -q >/dev/null 2>&1 &
+  mitmdump --set confdir="$CONF" -q >/dev/null 2>&1 &
+  ca_pid=$!
   for _ in $(seq 1 20); do [ -f "$CONF/mitmproxy-ca-cert.pem" ] && break; sleep 0.3; done
-  kill %1 2>/dev/null || true
+  kill "$ca_pid" 2>/dev/null || true
+  wait "$ca_pid" 2>/dev/null || true
+  if [ ! -f "$CONF/mitmproxy-ca-cert.pem" ]; then
+    echo "Ошибка: не удалось сгенерировать CA в $CONF" >&2
+    exit 1
+  fi
 fi
 
 # Настройка алиаса в shell профилях

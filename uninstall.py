@@ -12,7 +12,7 @@ def main():
     script_dir = Path(__file__).resolve().parent
     is_win = sys.platform.startswith("win")
     
-    print(f"=== Uninstalling agy-tier-fix ({'Windows' if is_win else 'Linux/macOS'}) ===")
+    print(f"=== Uninstalling agy-tier-fix ({'Windows' if is_win else 'Linux/macOS'}) ===", flush=True)
     
     if is_win:
         install_dir = Path(os.environ.get("LOCALAPPDATA", "")) / "agy-tier-fix"

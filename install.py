@@ -12,7 +12,9 @@ def main():
     script_dir = Path(__file__).resolve().parent
     is_win = sys.platform.startswith("win")
     
-    print(f"=== Installing agy-tier-fix ({'Windows' if is_win else 'Linux/macOS'}) ===")
+    # flush: stdout is block-buffered when piped, otherwise this header
+    # lands after the child installer's output
+    print(f"=== Installing agy-tier-fix ({'Windows' if is_win else 'Linux/macOS'}) ===", flush=True)
     
     if is_win:
         ps1_installer = script_dir / "install.ps1"
