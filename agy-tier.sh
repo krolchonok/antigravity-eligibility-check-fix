@@ -6,11 +6,11 @@
 #
 # Переменные (необязательные):
 #   AGY_BIN        путь к agy (по умолчанию из PATH или ~/.local/bin/agy)
-#   AGY_MITM_PORT  порт mitmproxy (по умолчанию 8085)
+#   AGY_MITM_PORT  стартовый порт mitmproxy (по умолчанию 8085); если занят
+#                  чужим процессом, берётся следующий свободный
 set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORT="${AGY_MITM_PORT:-8085}"
-PROXY="http://127.0.0.1:$PORT"
 CONF="$HOME/.mitmproxy"
 CA="$DIR/ca-bundle-mitm.pem"
 LOG="$DIR/mitm-tier.log"
@@ -39,9 +39,43 @@ if [ ! -f "$CA" ] || [ "$CONF/mitmproxy-ca-cert.pem" -nt "$CA" ]; then
   cat ${SYS:+"$SYS"} "$CONF/mitmproxy-ca-cert.pem" > "$CA"
 fi
 
-# 3) поднять mitmdump, если порт не слушается
+# 3) выбрать порт
+# Занятый порт нельзя слепо переиспользовать: если на нём чужой процесс, agy
+# уйдёт через неизвестный прокси. Свой mitmdump (с tier-fix.py) переиспользуем,
+# под чужим — берём следующий свободный порт.
+port_busy() {
+  ss -ltn 2>/dev/null | awk -v p=":$1\$" 'NR>1 && $4 ~ p {found=1} END {exit !found}'
+}
+
+port_is_ours() {
+  local pid
+  for pid in $(ss -ltnp 2>/dev/null | awk -v p=":$1\$" 'NR>1 && $4 ~ p' \
+               | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u); do
+    ps -p "$pid" -o args= 2>/dev/null | grep -q 'tier-fix\.py' && return 0
+  done
+  return 1
+}
+
+START_PORT="$PORT"
+REUSE=0
+PORT_FOUND=0
+for _ in $(seq 1 50); do
+  if ! port_busy "$PORT"; then PORT_FOUND=1; break; fi
+  if port_is_ours "$PORT"; then PORT_FOUND=1; REUSE=1; break; fi
+  PORT=$((PORT + 1))
+done
+if [ "$PORT_FOUND" -ne 1 ]; then
+  echo "не нашёл свободный порт в диапазоне $START_PORT-$((START_PORT + 49))" >&2
+  exit 1
+fi
+if [ "$PORT" != "$START_PORT" ]; then
+  echo "порт $START_PORT занят другим процессом, использую $PORT" >&2
+fi
+PROXY="http://127.0.0.1:$PORT"
+
+# 4) поднять mitmdump, если не переиспользуем уже запущенный
 SPAWNED_MITM=0
-if ! ss -ltn 2>/dev/null | grep -q "127.0.0.1:$PORT "; then
+if [ "$REUSE" -eq 0 ]; then
   nohup mitmdump -s "$DIR/tier-fix.py" \
     --listen-host 127.0.0.1 --listen-port "$PORT" \
     --allow-hosts 'daily-cloudcode-pa\.googleapis\.com' \
@@ -49,15 +83,15 @@ if ! ss -ltn 2>/dev/null | grep -q "127.0.0.1:$PORT "; then
   echo $! > "$PIDF"
   SPAWNED_MITM=1
   for _ in $(seq 1 60); do
-    ss -ltn 2>/dev/null | grep -q "127.0.0.1:$PORT " && break
+    port_busy "$PORT" && break
     sleep 0.5
   done
-  if ! ss -ltn 2>/dev/null | grep -q "127.0.0.1:$PORT "; then
+  if ! port_busy "$PORT"; then
     echo "mitmdump не поднялся, см. $LOG" >&2; tail -5 "$LOG" >&2; exit 1
   fi
 fi
 
-# 4) запустить agy через прокси, доверяя mitm-корню
+# 5) запустить agy через прокси, доверяя mitm-корню
 export HTTP_PROXY="$PROXY"  http_proxy="$PROXY"
 export HTTPS_PROXY="$PROXY" https_proxy="$PROXY"
 export ALL_PROXY="$PROXY"   all_proxy="$PROXY"

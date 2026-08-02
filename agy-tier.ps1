@@ -1,6 +1,8 @@
 # agy-tier.ps1 - PowerShell script to run Antigravity CLI via mitmproxy on Windows
 
-$Port = if ($env:AGY_MITM_PORT) { $env:AGY_MITM_PORT } else { "8085" }
+# AGY_MITM_PORT is the *starting* port; if it is taken by a foreign process the
+# next free one is used.
+$Port = if ($env:AGY_MITM_PORT) { [int]$env:AGY_MITM_PORT } else { 8085 }
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $MitmDir = Join-Path $env:USERPROFILE ".mitmproxy"
 $CertPath = Join-Path $MitmDir "mitmproxy-ca-cert.cer"
@@ -32,17 +34,48 @@ if ((-not $certExists) -and (Test-Path -Path $CertPath)) {
     certutil -addstore -user Root "$CertPath"
 }
 
-# 4. Check if mitmdump is already running on the port
+# 4. Pick a port. A busy port must not be reused blindly: if a foreign process
+# holds it, agy would be proxied through something unknown. Our own mitmdump
+# (running tier-fix.py) is reused; anything else makes us move to the next port.
+function Test-PortBusy([int]$p) {
+    [bool](Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue)
+}
+
+function Test-PortIsOurs([int]$p) {
+    $conns = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue
+    foreach ($c in $conns) {
+        $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $($c.OwningProcess)" -ErrorAction SilentlyContinue
+        if ($proc -and $proc.CommandLine -match 'tier-fix\.py') { return $true }
+    }
+    return $false
+}
+
+$StartPort = $Port
+$reuse = $false
+$portFound = $false
+for ($i = 0; $i -lt 50; $i++) {
+    if (-not (Test-PortBusy $Port)) { $portFound = $true; break }
+    if (Test-PortIsOurs $Port) { $portFound = $true; $reuse = $true; break }
+    $Port++
+}
+if (-not $portFound) {
+    Write-Error "No free port found in range $StartPort-$($StartPort + 49)"
+    return
+}
+if ($Port -ne $StartPort) {
+    Write-Host "Port $StartPort is taken by another process, using $Port" -ForegroundColor Yellow
+}
+
+# 5. Start mitmdump unless an existing one is being reused
 $spawnedMitm = $null
-$portOpen = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
-if (-not $portOpen) {
+if (-not $reuse) {
     Write-Host "Starting mitmdump on port $Port..." -ForegroundColor Cyan
     $mitmArgs = "-s `"$ScriptDir\tier-fix.py`" --listen-host 127.0.0.1 --listen-port $Port --allow-hosts `"daily-cloudcode-pa\.googleapis\.com`""
     $spawnedMitm = Start-Process mitmdump -ArgumentList $mitmArgs -PassThru -WindowStyle Hidden
     Start-Sleep -Seconds 2
 }
 
-# 5. Set proxy env vars and run agy
+# 6. Set proxy env vars and run agy
 $env:HTTP_PROXY = "http://127.0.0.1:$Port"
 $env:HTTPS_PROXY = "http://127.0.0.1:$Port"
 
@@ -54,7 +87,7 @@ try {
     Remove-Item Env:\HTTP_PROXY -ErrorAction SilentlyContinue
     Remove-Item Env:\HTTPS_PROXY -ErrorAction SilentlyContinue
 
-    # 6. Stop mitmdump after agy completes if spawned by this invocation
+    # 7. Stop mitmdump after agy completes if spawned by this invocation
     if ($spawnedMitm -and (-not $spawnedMitm.HasExited)) {
         Write-Host "Stopping mitmdump background process..." -ForegroundColor Cyan
         Stop-Process -Id $spawnedMitm.Id -Force -ErrorAction SilentlyContinue
