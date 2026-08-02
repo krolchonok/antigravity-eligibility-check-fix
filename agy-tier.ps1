@@ -50,6 +50,10 @@ try {
     Write-Host "Launching agy with tier fix..." -ForegroundColor Green
     & agy @args
 } finally {
+    # Clean up proxy environment variables from current session
+    Remove-Item Env:\HTTP_PROXY -ErrorAction SilentlyContinue
+    Remove-Item Env:\HTTPS_PROXY -ErrorAction SilentlyContinue
+
     # 6. Stop mitmdump after agy completes if spawned by this invocation
     if ($spawnedMitm -and (-not $spawnedMitm.HasExited)) {
         Write-Host "Stopping mitmdump background process..." -ForegroundColor Cyan
