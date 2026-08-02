@@ -107,6 +107,28 @@ kill "$(cat mitm-tier.pid)"
 
 ## Windows
 
+### Automated Installation (PowerShell)
+
+Run in PowerShell to install to a standalone folder (`$env:LOCALAPPDATA\agy-tier-fix`) and set up the `agys` alias:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
+
+After reopening PowerShell:
+```powershell
+agys -p "say ok"
+```
+
+The script automatically manages `mitmdump`'s lifecycle, starting it before `agy` and stopping it upon completion.
+
+To uninstall completely:
+```powershell
+powershell -File "$env:LOCALAPPDATA\agy-tier-fix\uninstall.ps1"
+```
+
+### Manual Execution
+
 `agy` on Windows uses the system certificate store and ignores `SSL_CERT_FILE`,
 so trust the mitmproxy CA once, then run manually:
 

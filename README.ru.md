@@ -104,6 +104,28 @@ kill "$(cat mitm-tier.pid)"
 
 ## Windows
 
+### Автоматическая установка (PowerShell)
+
+Выполните в PowerShell для установки в изолированную папку (`$env:LOCALAPPDATA\agy-tier-fix`) и автоматической добавления алиаса `agys`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
+
+После перезапуска PowerShell доступен алиас `agys`:
+```powershell
+agys -p "say ok"
+```
+
+Скрипт сам закрутит `mitmdump` при старте и остановит его сразу по завершении работы `agy`.
+
+Для полного удаления:
+```powershell
+powershell -File "$env:LOCALAPPDATA\agy-tier-fix\uninstall.ps1"
+```
+
+### Ручной запуск
+
 `agy` под Windows берёт корни из системного хранилища и игнорирует
 `SSL_CERT_FILE`, поэтому доверие к mitm-CA добавляется один раз, дальше — вручную:
 
