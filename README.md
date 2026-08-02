@@ -76,7 +76,12 @@ agys -p "say ok"
 python uninstall.py
 ```
 
-The script automatically:
+This stops any running `mitmdump`, removes the `agys` alias from your shell
+profiles and deletes the installation directory.
+
+### How a run works
+
+Each time you invoke `agys`, the wrapper (`agy-tier.sh`):
 
 - generates the mitmproxy CA on first run (`~/.mitmproxy`);
 - builds a CA bundle `system roots + mitmproxy CA` and hands it to `agy` via
@@ -100,7 +105,13 @@ alias agys='/path/to/agy-tier-fix/agy-tier.sh'
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `AGY_BIN` | `agy` from PATH / `~/.local/bin/agy` | path to the agy binary |
-| `AGY_MITM_PORT` | `8085` | local mitmproxy port |
+| `AGY_MITM_PORT` | `8085` | starting port for local mitmproxy |
+| `AGY_KEEP_MITM` | `0` | `1` leaves the spawned mitmdump running on exit |
+
+The port is picked at startup: if it is already held by **our** mitmdump (one
+running `tier-fix.py`), that instance is reused; if it is held by **any other**
+process, the next free port is used instead — `agy` is never proxied through an
+unknown listener. Up to 50 ports from the starting one are probed.
 
 ## Egress / region
 
@@ -114,8 +125,11 @@ call to pass.
 
 ## Stop
 
+`agys` stops the proxy it spawned on exit. To kill a leftover one:
+
 ```bash
-kill "$(cat mitm-tier.pid)"
+kill "$(cat ~/.local/share/agy-tier-fix/mitm-tier.pid)"   # after install.sh
+pkill -f 'mitmdump -s .*tier-fix.py'                      # or, regardless of location
 ```
 
 ## Notes
