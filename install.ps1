@@ -62,11 +62,17 @@ foreach ($Prof in $TargetProfiles) {
     }
 
     $ProfContent = Get-Content -Path $Prof -Raw -ErrorAction SilentlyContinue
-    if ((-not $ProfContent) -or ($ProfContent -notmatch "function agys")) {
+    if ($ProfContent -and ($ProfContent -match [regex]::Escape($AliasLine))) {
+        Write-Host "Alias 'agys' is already up to date in $Prof" -ForegroundColor Yellow
+    } elseif ($ProfContent -and ($ProfContent -match '(?m)^\s*function\s+agys\s*\{')) {
+        # Points at a different (older) copy — rewrite it, otherwise reinstalling
+        # has no effect and agys keeps launching the stale location.
+        $updated = [regex]::Replace($ProfContent, '(?m)^\s*function\s+agys\s*\{.*$', $AliasLine)
+        Set-Content -Path $Prof -Value $updated -NoNewline
+        Write-Host "Alias 'agys' updated in $Prof (pointed elsewhere)" -ForegroundColor Green
+    } else {
         Add-Content -Path $Prof -Value $FullAliasBlock
         Write-Host "Alias 'agys' added to $Prof" -ForegroundColor Green
-    } else {
-        Write-Host "Alias 'agys' is already in $Prof" -ForegroundColor Yellow
     }
 }
 

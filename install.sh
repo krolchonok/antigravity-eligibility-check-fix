@@ -71,13 +71,24 @@ add_alias() {
   local rc="$1"
   if [ -f "$rc" ] || [ "$(basename "$rc")" = ".bashrc" ]; then
     touch "$rc"
-    if ! grep -q "alias agys=" "$rc"; then
+    if grep -qF "$ALIAS_LINE" "$rc"; then
+      echo "Алиас 'agys' уже актуален в $rc"
+    elif grep -q "^[[:space:]]*alias agys=" "$rc"; then
+      # Алиас есть, но ведёт на другой путь (старая копия). Без обновления
+      # переустановка не вступит в силу: agys продолжит запускать старое.
+      local tmp
+      tmp="$(mktemp)"
+      awk -v new="$ALIAS_LINE" '
+        /^[[:space:]]*alias agys=/ { if (!done) { print new; done = 1 } ; next }
+        { print }
+      ' "$rc" > "$tmp" && cat "$tmp" > "$rc"
+      rm -f "$tmp"
+      echo "Алиас 'agys' обновлён в $rc (вёл на другой путь)"
+    else
       echo "" >> "$rc"
       echo "# === agy-tier-fix alias ===" >> "$rc"
       echo "$ALIAS_LINE" >> "$rc"
       echo "Алиас 'agys' добавлен в $rc"
-    else
-      echo "Алиас 'agys' уже есть в $rc"
     fi
   fi
 }
