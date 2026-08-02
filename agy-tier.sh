@@ -40,14 +40,14 @@ if [ ! -f "$CA" ] || [ "$CONF/mitmproxy-ca-cert.pem" -nt "$CA" ]; then
 fi
 
 # 3) поднять mitmdump, если порт не слушается
+SPAWNED_MITM=0
 if ! ss -ltn 2>/dev/null | grep -q "127.0.0.1:$PORT "; then
-  # перехватываем TLS ТОЛЬКО у API-хоста; остальное (github, git, oauth и т.д.)
-  # проходит насквозь с настоящими сертификатами — дочерние gh/git не ломаются
   nohup mitmdump -s "$DIR/tier-fix.py" \
     --listen-host 127.0.0.1 --listen-port "$PORT" \
     --allow-hosts 'daily-cloudcode-pa\.googleapis\.com' \
     --set confdir="$CONF" > "$LOG" 2>&1 &
   echo $! > "$PIDF"
+  SPAWNED_MITM=1
   for _ in $(seq 1 60); do
     ss -ltn 2>/dev/null | grep -q "127.0.0.1:$PORT " && break
     sleep 0.5
@@ -68,4 +68,8 @@ export REQUESTS_CA_BUNDLE="$CA"
 export GRPC_DEFAULT_SSL_ROOTS_FILE_PATH="$CA"
 export NODE_EXTRA_CA_CERTS="$CONF/mitmproxy-ca-cert.pem"
 
-exec "$AGY_BIN" "$@"
+if [ "$SPAWNED_MITM" -eq 1 ] && [ "${AGY_KEEP_MITM:-0}" -ne 1 ]; then
+  trap 'kill $(cat "$PIDF" 2>/dev/null) 2>/dev/null || true; rm -f "$PIDF"' EXIT
+fi
+
+"$AGY_BIN" "$@"
