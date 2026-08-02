@@ -1,11 +1,6 @@
 # agy-tier.ps1 - PowerShell script to run Antigravity CLI via mitmproxy on Windows
-param(
-    [string]$Port = "8085",
-    [switch]$KeepMitmRunning,
-    [Parameter(ValueFromRemainingArguments=$true)]
-    [string[]]$AgyArgs
-)
 
+$Port = if ($env:AGY_MITM_PORT) { $env:AGY_MITM_PORT } else { "8085" }
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $MitmDir = Join-Path $env:USERPROFILE ".mitmproxy"
 $CertPath = Join-Path $MitmDir "mitmproxy-ca-cert.cer"
@@ -53,10 +48,10 @@ $env:HTTPS_PROXY = "http://127.0.0.1:$Port"
 
 try {
     Write-Host "Launching agy with tier fix..." -ForegroundColor Green
-    & agy @AgyArgs
+    & agy @args
 } finally {
     # 6. Stop mitmdump after agy completes if spawned by this invocation
-    if ($spawnedMitm -and (-not $KeepMitmRunning) -and (-not $spawnedMitm.HasExited)) {
+    if ($spawnedMitm -and (-not $spawnedMitm.HasExited)) {
         Write-Host "Stopping mitmdump background process..." -ForegroundColor Cyan
         Stop-Process -Id $spawnedMitm.Id -Force -ErrorAction SilentlyContinue
     }
