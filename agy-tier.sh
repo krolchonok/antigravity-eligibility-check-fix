@@ -80,14 +80,24 @@ if [ "$REUSE" -eq 0 ]; then
     --listen-host 127.0.0.1 --listen-port "$PORT" \
     --allow-hosts 'daily-cloudcode-pa\.googleapis\.com' \
     --set confdir="$CONF" > "$LOG" 2>&1 &
-  echo $! > "$PIDF"
+  MITM_PID=$!
+  echo "$MITM_PID" > "$PIDF"
   SPAWNED_MITM=1
-  for _ in $(seq 1 60); do
+  # Холодный старт mitmproxy на нагруженной машине занимает десятки секунд
+  # (прогретый — около секунды), поэтому ждём до 120 с. Если процесс умер,
+  # выходим сразу, не досиживая таймаут.
+  for _ in $(seq 1 240); do
     port_busy "$PORT" && break
+    kill -0 "$MITM_PID" 2>/dev/null || break
     sleep 0.5
   done
   if ! port_busy "$PORT"; then
-    echo "mitmdump не поднялся, см. $LOG" >&2; tail -5 "$LOG" >&2; exit 1
+    echo "mitmdump не поднялся, см. $LOG" >&2
+    tail -5 "$LOG" >&2
+    # иначе процесс осиротеет и займёт порт уже после нашего выхода
+    kill "$MITM_PID" 2>/dev/null || true
+    rm -f "$PIDF"
+    exit 1
   fi
 fi
 

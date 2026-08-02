@@ -72,7 +72,22 @@ if (-not $reuse) {
     Write-Host "Starting mitmdump on port $Port..." -ForegroundColor Cyan
     $mitmArgs = "-s `"$ScriptDir\tier-fix.py`" --listen-host 127.0.0.1 --listen-port $Port --allow-hosts `"daily-cloudcode-pa\.googleapis\.com`""
     $spawnedMitm = Start-Process mitmdump -ArgumentList $mitmArgs -PassThru -WindowStyle Hidden
-    Start-Sleep -Seconds 2
+    # A cold mitmproxy start on a loaded machine can take tens of seconds, so
+    # poll for the listener instead of assuming a fixed delay; bail out early
+    # if the process died.
+    $ready = $false
+    for ($i = 0; $i -lt 240; $i++) {
+        if (Test-PortBusy $Port) { $ready = $true; break }
+        if ($spawnedMitm.HasExited) { break }
+        Start-Sleep -Milliseconds 500
+    }
+    if (-not $ready) {
+        if (-not $spawnedMitm.HasExited) {
+            Stop-Process -Id $spawnedMitm.Id -Force -ErrorAction SilentlyContinue
+        }
+        Write-Error "mitmdump failed to start on port $Port"
+        return
+    }
 }
 
 # 6. Set proxy env vars and run agy
